@@ -149,6 +149,7 @@ int checkStatus(int tid, char * status, char * transStr)
 int main(int argc, char *argv[])
 {
   int tid = 0;
+  char thash[40];
   int done = 0;
   char status[BUF_LEN] = "Verifying";
   char transBuf[BUF_LEN] = "transmission-remote ";
@@ -163,11 +164,27 @@ int main(int argc, char *argv[])
   else if (argc == 2)
   {
     tid = atoi(argv[1]);
+    sprintf(thash, "%d", tid);
+    if (tid <= 0) {
+        strcat(thash, argv[1]);
+        if( thash != NULL && thash[0] == '\0' ) {
+            fprintf(stderr, "Torrent id or hash is invalid\n");
+            exit(EXIT_FAILURE);
+        }
+    }
   }
   else
   {
     strcat(transBuf, argv[1]); /* host param */
     tid = atoi(argv[2]);
+    sprintf(thash, "%d", tid);
+    if (tid <= 0) {
+        strcat(thash, argv[2]);
+        if( thash != NULL && thash[0] == '\0' ) {
+            fprintf(stderr, "Torrent id or hash is invalid\n");
+            exit(EXIT_FAILURE);
+        }
+    }
 
     /* options */
     if (argc > 3)
@@ -199,14 +216,8 @@ int main(int argc, char *argv[])
     }
   }
 
-  if (tid <= 0) 
-  {
-    fprintf(stderr, "Torrent id is invalid\n");
-    exit(EXIT_FAILURE);
-  }
-
   /* Since we don't need the output of this call, we can be lazy and use a system call */
-  snprintf(cmdBuf, BUF_LEN, "%s -t %d --verify > /dev/null", transBuf, tid);
+  snprintf(cmdBuf, BUF_LEN, "%s -t %s --verify > /dev/null", transBuf, thash);
   system(cmdBuf);
 
   /* Keep checking status until verification is done */
