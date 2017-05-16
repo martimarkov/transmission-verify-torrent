@@ -31,7 +31,7 @@
    Parse the output of "transmission-remote -l" to get
    the status of target torrent.
 */
-int parseStatus(FILE * fp, int tid, char * statusOut)
+int parseStatus(FILE * fp, char * thash, char * statusOut)
 {
   char line[LINE_LEN];
   int lid = -1;
@@ -65,7 +65,7 @@ int parseStatus(FILE * fp, int tid, char * statusOut)
     sscanf(line, "%d %d", &lid, &done);
   }
 
-  if (lid != tid) 
+  if (lid == -1)
   {
     fprintf(stderr, "Torrent id could not be found\n");
     exit(EXIT_FAILURE);
@@ -84,7 +84,7 @@ int parseStatus(FILE * fp, int tid, char * statusOut)
 }
 
 /* Build the arguments array required for execvp */
-char ** buildArgsArr(char * transStr, int tid)
+char ** buildArgsArr(char * transStr, char * thash)
 {
   /* Since everything is static this only runs once */
   static char args[ARGS_NUM][ARG_LEN] = {{0}};
@@ -104,7 +104,8 @@ char ** buildArgsArr(char * transStr, int tid)
     }
 
     /* These are the torrent id and list args */
-    snprintf(args[(argi++)], ARG_LEN, "-t%d", tid);
+    strcpy(args[(argi++)], "-t");
+    snprintf(args[(argi++)], ARG_LEN, "%s", thash);
     strcpy(args[(argi++)], "-l");
     
     /* Copy the pointers to the strings */
@@ -114,7 +115,7 @@ char ** buildArgsArr(char * transStr, int tid)
   return rval;
 }
 
-int checkStatus(int tid, char * status, char * transStr)
+int checkStatus(char * thash, char * status, char * transStr)
 {
   int fd[2];
   int done = 0;
@@ -129,7 +130,7 @@ int checkStatus(int tid, char * status, char * transStr)
 
   if (pid == 0) {
     dup2(fd[1], STDOUT_FILENO);
-    execvp("transmission-remote", buildArgsArr(transStr, tid));
+    execvp("transmission-remote", buildArgsArr(transStr, thash));
   }
   else
   {
@@ -138,7 +139,7 @@ int checkStatus(int tid, char * status, char * transStr)
     dup2(fd[0], STDIN_FILENO);
 
     fp = fdopen(fd[0], "r");
-    done = parseStatus(fp, tid, status);
+    done = parseStatus(fp, thash, status);
     waitpid(pid, NULL, 0);
     close(fd[0]);
   }
@@ -148,7 +149,6 @@ int checkStatus(int tid, char * status, char * transStr)
 
 int main(int argc, char *argv[])
 {
-  int tid = 0;
   char thash[40];
   int done = 0;
   char status[BUF_LEN] = "Verifying";
@@ -163,29 +163,20 @@ int main(int argc, char *argv[])
   }
   else if (argc == 2)
   {
-    tid = atoi(argv[1]);
-    sprintf(thash, "%d", tid);
-    if (tid <= 0) {
-        strcat(thash, argv[1]);
-        if( thash != NULL && thash[0] == '\0' ) {
-            fprintf(stderr, "Torrent id or hash is invalid\n");
-            exit(EXIT_FAILURE);
-        }
+    strcpy(thash, argv[1]);
+    if(thash != NULL && thash[0] == '\0') {
+        fprintf(stderr, "Torrent id or hash is invalid\n");
+        exit(EXIT_FAILURE);
     }
   }
   else
   {
     strcat(transBuf, argv[1]); /* host param */
-    tid = atoi(argv[2]);
-    sprintf(thash, "%d", tid);
-    if (tid <= 0) {
-        strcat(thash, argv[2]);
-        if( thash != NULL && thash[0] == '\0' ) {
-            fprintf(stderr, "Torrent id or hash is invalid\n");
-            exit(EXIT_FAILURE);
-        }
+    strcpy(thash, argv[2]);
+    if(thash != NULL && thash[0] == '\0') {
+        fprintf(stderr, "Torrent id or hash is invalid\n");
+        exit(EXIT_FAILURE);
     }
-
     /* options */
     if (argc > 3)
     {
@@ -223,7 +214,7 @@ int main(int argc, char *argv[])
   /* Keep checking status until verification is done */
   while (!strcmp(status, "Verifying") || !strcmp(status, "Will Verify"))
   {
-    done = checkStatus(tid, status, transBuf);
+    done = checkStatus(thash, status, transBuf);
     /* Wait between status checks */
     nanosleep((struct timespec[]){{0, (long)SECS_WAIT * 1000000000}}, NULL);
   }
@@ -231,9 +222,9 @@ int main(int argc, char *argv[])
   /* Make sure the torrent isn't stopped if unfinished */
   if (done < 100)
   {
-    snprintf(cmdBuf, BUF_LEN, "%s -t %d -s > /dev/null", transBuf, tid);
+    snprintf(cmdBuf, BUF_LEN, "%s -t %s -s > /dev/null", transBuf, thash);
     system(cmdBuf);
-    checkStatus(tid, status, transBuf);
+    checkStatus(thash, status, transBuf);
   }
   else
   {
